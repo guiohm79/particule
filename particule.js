@@ -27,11 +27,8 @@ class AirQualityCard extends HTMLElement {
       const pm25Value = parseFloat(PM25.state);
       const pm10Value = parseFloat(PM10.state);
       
-      // Calcul de l'indice de qualité d'air (simplifié)
-      const aqi = Math.max(
-        this.calculateAQI(pm25Value, 25, 'pm25'),
-        this.calculateAQI(pm10Value, 50, 'pm10')
-      );
+      // Calcul de l'indice de qualité d'air officiel ATMO
+      const aqi = this.calculateAQI(pm25Value, pm10Value);
       
       // Définir couleur et texte basés sur AQI
       const { color, gradient, text, emoji } = this.getAQIInfo(aqi);
@@ -106,6 +103,11 @@ class AirQualityCard extends HTMLElement {
             margin-top: 5px;
             max-width: 90%;
           }
+          .aqi-index {
+            font-size: 0.8rem;
+            margin-top: 5px;
+            opacity: 0.8;
+          }
           .details {
             display: flex;
             justify-content: space-around;
@@ -142,11 +144,12 @@ class AirQualityCard extends HTMLElement {
         </style>
         
         <div class="container">
-          <div class="air-quality-circle" @click=${() => this._showMoreInfo()}>
+          <div class="air-quality-circle" id="circle">
             <div class="circle-content">
               <div class="emoji">${emoji}</div>
-              <div class="aqi-value">${Math.round(aqi)}</div>
+              <div class="aqi-value">${aqi.toFixed(1)}</div>
               <div class="aqi-text">${text}</div>
+              <div class="aqi-index">Indice ATMO</div>
             </div>
             ${this.generateBubbleHTML(10)}
           </div>
@@ -165,51 +168,85 @@ class AirQualityCard extends HTMLElement {
           </div>
         </div>
       `;
-    }
-    
-    calculateAQI(value, threshold, type) {
-      // Calcul simplifié de l'indice
-      if (type === 'pm25') {
-        return (value / threshold) * 100;
-      } else {
-        return (value / threshold) * 100;
+      
+      // Ajouter l'écouteur d'événement après création
+      const circle = this.content.querySelector('#circle');
+      if (circle) {
+        circle.addEventListener('click', () => this._showMoreInfo());
       }
     }
     
+    calculateAQI(pm25Value, pm10Value) {
+      // Calcul officiel de l'indice ATMO français (2021)
+      const pm25Index = this.calculatePollutantIndex(pm25Value, [0, 10, 20, 25, 50, 75, 100, 150]);
+      const pm10Index = this.calculatePollutantIndex(pm10Value, [0, 20, 40, 50, 100, 150, 200, 300]);
+      
+      // L'indice ATMO est le maximum des sous-indices
+      return Math.max(pm25Index, pm10Index);
+    }
+    
+    calculatePollutantIndex(value, thresholds) {
+      // Si la valeur est inférieure au premier seuil significatif (après 0)
+      if (value <= thresholds[1]) {
+        return 1; // Très bon
+      }
+      
+      // Parcourir les seuils pour trouver l'indice correspondant
+      for (let i = 1; i < thresholds.length - 1; i++) {
+        if (value <= thresholds[i+1]) {
+          // Calcul de l'indice par interpolation linéaire
+          const min = thresholds[i];
+          const max = thresholds[i+1];
+          return i + (value - min) / (max - min);
+        }
+      }
+      
+      // Si on dépasse le dernier seuil
+      return 6; // Extrêmement mauvais
+    }
+    
     getAQIInfo(aqi) {
-      if (aqi <= 20) {
+      // Indice ATMO officiel avec 6 niveaux
+      if (aqi <= 1) {
         return {
-          color: '#48d45a',
-          gradient: 'linear-gradient(135deg, #48d45a, #10A674)',
-          text: 'Excellent',
+          color: '#50F0E6',
+          gradient: 'linear-gradient(135deg, #50F0E6, #32CFC6)',
+          text: 'Très bon',
           emoji: '😊'
         };
-      } else if (aqi <= 40) {
+      } else if (aqi <= 2) {
         return {
-          color: '#a8e05f',
-          gradient: 'linear-gradient(135deg, #a8e05f, #48d45a)',
+          color: '#50CCAA',
+          gradient: 'linear-gradient(135deg, #50CCAA, #30AA88)',
           text: 'Bon',
           emoji: '🙂'
         };
-      } else if (aqi <= 60) {
+      } else if (aqi <= 3) {
         return {
-          color: '#FFCE47',
-          gradient: 'linear-gradient(135deg, #FFCE47, #FDBB2F)',
+          color: '#F0E641',
+          gradient: 'linear-gradient(135deg, #F0E641, #D0C621)',
           text: 'Moyen',
           emoji: '😐'
         };
-      } else if (aqi <= 80) {
+      } else if (aqi <= 4) {
         return {
-          color: '#FF9447',
-          gradient: 'linear-gradient(135deg, #FF9447, #FF7547)',
+          color: '#FF9F38',
+          gradient: 'linear-gradient(135deg, #FF9F38, #DF7F18)',
+          text: 'Dégradé',
+          emoji: '😕'
+        };
+      } else if (aqi <= 5) {
+        return {
+          color: '#FF5050',
+          gradient: 'linear-gradient(135deg, #FF5050, #DF3030)',
           text: 'Mauvais',
           emoji: '😷'
         };
       } else {
         return {
-          color: '#FF5E57',
-          gradient: 'linear-gradient(135deg, #FF5E57, #D81C38)',
-          text: 'Très Mauvais',
+          color: '#A04EFF',
+          gradient: 'linear-gradient(135deg, #A04EFF, #802EDF)',
+          text: 'Extrêmement mauvais',
           emoji: '🤢'
         };
       }
@@ -242,11 +279,12 @@ class AirQualityCard extends HTMLElement {
     }
     
     _showMoreInfo() {
+      const entityId = this.config.entity_pm25;
       const event = new Event('hass-more-info', {
         bubbles: true,
         composed: true
       });
-      event.detail = { entityId: this.config.entity_pm25 };
+      event.detail = { entityId };
       this.dispatchEvent(event);
     }
     
@@ -263,96 +301,6 @@ class AirQualityCard extends HTMLElement {
   }
   
   customElements.define('air-quality-card', AirQualityCard);
-  
-  class AirQualityCardEditor extends HTMLElement {
-    setConfig(config) {
-      this._config = config;
-    }
-  
-    get _entity_pm25() {
-      return this._config.entity_pm25 || '';
-    }
-    
-    get _entity_pm10() {
-      return this._config.entity_pm10 || '';
-    }
-    
-    get _title() {
-      return this._config.title || 'Qualité de l\'Air';
-    }
-  
-    render() {
-      if (!this._config) {
-        return;
-      }
-  
-      const hass = this._hass;
-      if (!hass) {
-        return;
-      }
-  
-      const sensorEntities = Object.keys(hass.states).filter(
-        (eid) => eid.substr(0, 7) === 'sensor.'
-      );
-  
-      return html`
-        <div class="card-config">
-          <paper-input
-            label="Titre"
-            .value="${this._title}"
-            .configValue="${'title'}"
-            @value-changed="${this._valueChanged}"
-          ></paper-input>
-          
-          <ha-entity-picker
-            label="Entité PM2.5"
-            .hass="${this._hass}"
-            .value="${this._entity_pm25}"
-            .configValue="${'entity_pm25'}"
-            .includeDomains="${['sensor']}"
-            @value-changed="${this._valueChanged}"
-          ></ha-entity-picker>
-          
-          <ha-entity-picker
-            label="Entité PM10"
-            .hass="${this._hass}"
-            .value="${this._entity_pm10}"
-            .configValue="${'entity_pm10'}"
-            .includeDomains="${['sensor']}"
-            @value-changed="${this._valueChanged}"
-          ></ha-entity-picker>
-        </div>
-      `;
-    }
-  
-    _valueChanged(ev) {
-      if (!this._config || !this._hass) {
-        return;
-      }
-      
-      const target = ev.target;
-      if (this[`_${target.configValue}`] === target.value) {
-        return;
-      }
-      
-      if (target.configValue) {
-        if (target.value === '') {
-          delete this._config[target.configValue];
-        } else {
-          this._config = {
-            ...this._config,
-            [target.configValue]: target.value,
-          };
-        }
-      }
-      
-      this.dispatchEvent(new CustomEvent('config-changed', {
-        detail: { config: this._config },
-      }));
-    }
-  }
-  
-  customElements.define('air-quality-card-editor', AirQualityCardEditor);
   
   window.customCards = window.customCards || [];
   window.customCards.push({
