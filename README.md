@@ -1,6 +1,8 @@
 # particule
 card homeassistant
 
+<img width="589" alt="image" src="https://github.com/guiohm79/particule/blob/main/capture.png">
+
 ```yaml
 type: 'custom:air-quality-card'
 title: 'Qualité de l''Air'
