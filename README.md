@@ -1,5 +1,8 @@
+
+Permet de visualiser un ou deux capteurs de qualité de l'air de type SDS011 (particules 2.5 et 10 µm)
+
 # particule
-card homeassistant
+carte pour homeassistant
 
 <img width="589" alt="image" src="https://github.com/guiohm79/particule/blob/main/capture.png">
 
